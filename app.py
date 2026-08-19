@@ -512,7 +512,8 @@ st.markdown(
 search = st.text_input(
     "Search",
     placeholder="Search by job title, company or keyword...",
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    key="search_query"
 )
 
 st.markdown("""
@@ -566,6 +567,8 @@ for col, icon, number, label in stats:
 
 # -------------------- Filters --------------------
 
+# -------------------- Filters --------------------
+
 st.markdown(
     '<div class="section-title">Featured Opportunities</div>',
     unsafe_allow_html=True
@@ -579,22 +582,54 @@ st.markdown(
 left, right = st.columns([2.7, 1])
 
 with right:
+
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">🎯 Refine your search</div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel-text">Choose a job type, company or ranking method.</div>', unsafe_allow_html=True)
 
-    type_options = ["All Types"] + sorted(types)
-    company_options = ["All Companies"] + sorted(companies)
+    st.markdown(
+        '<div class="panel-title">🎯 Refine your search</div>',
+        unsafe_allow_html=True
+    )
 
-    selected_type = st.selectbox("Job Type", type_options)
-    selected_company = st.selectbox("Company", company_options)
+    st.markdown(
+        '<div class="panel-text">Choose a job type, company or ranking method.</div>',
+        unsafe_allow_html=True
+    )
+
+    type_options = ["All Types"] + sorted(
+        {str(j[3]).strip() for j in jobs if j[3]}
+    )
+
+    company_options = ["All Companies"] + sorted(
+        {str(j[2]).strip() for j in jobs if j[2]}
+    )
+
+    selected_type = st.selectbox(
+        "Job Type",
+        type_options,
+        key="job_type_filter"
+    )
+
+    selected_company = st.selectbox(
+        "Company",
+        company_options,
+        key="company_filter"
+    )
 
     sort_by = st.selectbox(
         "Sort By",
-        ["Default", "Job Title A-Z", "Company A-Z"]
+        [
+            "Newest",
+            "Job Title A-Z",
+            "Job Title Z-A",
+            "Company A-Z",
+            "Company Z-A"
+        ],
+        key="sort_filter"
     )
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # -------------------- Smart Match --------------------
 
     st.markdown("""
     <div class="smart">
@@ -609,137 +644,381 @@ with right:
     smart_keywords = st.text_input(
         "Skills",
         placeholder="Python, SQL, ML",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="smart_keywords"
     )
 
+    # Reset button
+    if st.button(
+        "↺ Reset All Filters",
+        use_container_width=True,
+        key="reset_filters"
+    ):
+        st.session_state.search_query = ""
+        st.session_state.job_type_filter = "All Types"
+        st.session_state.company_filter = "All Companies"
+        st.session_state.sort_filter = "Newest"
+        st.session_state.smart_keywords = ""
+        st.rerun()
 
-# -------------------- Filtering --------------------
+
+# ============================================================
+# FILTERING
+# ============================================================
 
 filtered = []
 
+search_text = str(search or "").strip().lower()
+
+# Convert search into useful words.
+# Example:
+# "data analyst" -> ["data", "analyst"]
+search_words = [
+    word for word in re.findall(r"[a-zA-Z0-9+#.-]+", search_text)
+    if len(word) > 1
+]
+
 for job in jobs:
-    title = str(job[1] or "")
-    company = str(job[2] or "")
-    description = str(job[5] or "")
 
-    searchable = f"{title} {company} {description}".lower()
+    job_id = job[0]
 
-    if search and search.lower().strip() not in searchable:
-        continue
+    title = str(job[1] or "").strip()
+    company = str(job[2] or "").strip()
+    job_type = str(job[3] or "").strip()
+    salary = str(job[4] or "").strip()
+    description = str(job[5] or "").strip()
+    job_url = str(job[6] or "").strip()
 
-    if selected_type != "All Types" and str(job[3]).strip() != selected_type:
-        continue
+    # --------------------------------------------------------
+    # Search
+    # --------------------------------------------------------
 
-    if selected_company != "All Companies" and str(job[2]).strip() != selected_company:
-        continue
+    searchable_text = " ".join([
+        title,
+        company,
+        job_type,
+        salary,
+        description
+    ]).lower()
 
+    # Every search word must exist somewhere in the job.
+    # This makes:
+    # analyst       -> analyst jobs
+    # data analyst  -> jobs containing both words
+    if search_words:
+        if not all(word in searchable_text for word in search_words):
+            continue
+
+    # --------------------------------------------------------
+    # Job Type
+    # --------------------------------------------------------
+
+    if selected_type != "All Types":
+
+        if job_type.lower() != selected_type.lower():
+            continue
+
+    # --------------------------------------------------------
+    # Company
+    # --------------------------------------------------------
+
+    if selected_company != "All Companies":
+
+        if company.lower() != selected_company.lower():
+            continue
+
+    # Passed every filter
     filtered.append(job)
 
+
+# ============================================================
+# SORTING
+# ============================================================
+
 if sort_by == "Job Title A-Z":
-    filtered.sort(key=lambda x: str(x[1] or "").lower())
+
+    filtered.sort(
+        key=lambda x: str(x[1] or "").lower()
+    )
+
+elif sort_by == "Job Title Z-A":
+
+    filtered.sort(
+        key=lambda x: str(x[1] or "").lower(),
+        reverse=True
+    )
 
 elif sort_by == "Company A-Z":
-    filtered.sort(key=lambda x: str(x[2] or "").lower())
 
-if smart_keywords:
     filtered.sort(
-        key=lambda x: match_score(x, smart_keywords) or 0,
+        key=lambda x: str(x[2] or "").lower()
+    )
+
+elif sort_by == "Company Z-A":
+
+    filtered.sort(
+        key=lambda x: str(x[2] or "").lower(),
+        reverse=True
+    )
+
+else:
+    # Newest/default = database order
+    # No artificial sorting needed.
+    pass
+
+
+# ============================================================
+# SMART MATCH
+# ============================================================
+
+smart_text = str(smart_keywords or "").strip()
+
+if smart_text:
+
+    # Smart Match should rank the ALREADY FILTERED jobs.
+    # It should NOT remove jobs selected by the normal filters.
+
+    filtered.sort(
+        key=lambda x: match_score(x, smart_text) or 0,
         reverse=True
     )
 
 
-# -------------------- Job List --------------------
+# ============================================================
+# RESULT SUMMARY
+# ============================================================
 
 with left:
 
-    if smart_keywords:
-        st.info("✨ Smart Match is ranking jobs according to your selected skills.")
+    if smart_text:
+
+        st.info(
+            "✨ Smart Match is ranking the filtered opportunities "
+            "according to your selected skills."
+        )
+
+    # Result information
+
+    if search_text:
+
+        st.markdown(
+            f"""
+            <div style="
+                background:#eef2ff;
+                border:1px solid #e0e7ff;
+                padding:10px 14px;
+                border-radius:10px;
+                margin-bottom:15px;
+                color:#3730a3;
+                font-size:13px;
+                font-weight:600;
+            ">
+                🔎 Showing {len(filtered)} result(s) for
+                <strong>{html.escape(search)}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     if not filtered:
-        st.warning("No matching opportunities found. Try another search or filter.")
+
+        st.warning(
+            "No matching opportunities found. "
+            "Try another keyword or reset the filters."
+        )
+
+    # ========================================================
+    # JOB CARDS
+    # ========================================================
 
     for job in filtered:
 
         job_id, title, company, job_type, salary, raw_description, job_url = job
 
-        description = clean_description(raw_description)
-        score = match_score(job, smart_keywords)
+        title = str(title or "Untitled Role")
+        company = str(company or "Company not listed")
+        job_type = str(job_type or "Not specified")
+        salary = str(salary or "")
+        job_url = str(job_url or "").strip()
 
+        # Clean API HTML before displaying it
+        description = clean_description(raw_description)
+
+        # Smart Match score
+        score = match_score(job, smart_text)
+
+        # Company logo
         logo = logo_url(company)
 
-        st.markdown('<div class="job">', unsafe_allow_html=True)
+        # ----------------------------------------------------
+        # Card
+        # ----------------------------------------------------
 
-        top1, top2, top3 = st.columns([0.55, 3.5, 1.4])
+        st.markdown(
+            '<div class="job">',
+            unsafe_allow_html=True
+        )
 
+        top1, top2, top3 = st.columns(
+            [0.55, 3.5, 1.4]
+        )
+
+        # Logo
         with top1:
+
             if logo:
-                st.image(logo, width=48)
+
+                st.image(
+                    logo,
+                    width=48
+                )
+
             else:
+
                 st.markdown("### 🏢")
 
+        # Title + company
         with top2:
+
             st.markdown(
-                f'<div class="job-title">{html.escape(str(title or "Untitled Role"))}</div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                f'<div class="company">{html.escape(str(company or "Company not listed"))}</div>',
+                f"""
+                <div class="job-title">
+                    {html.escape(title)}
+                </div>
+                """,
                 unsafe_allow_html=True
             )
 
+            st.markdown(
+                f"""
+                <div class="company">
+                    {html.escape(company)}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Salary
         with top3:
+
             if salary:
+
                 st.markdown(
-                    f'<div class="salary">{html.escape(str(salary))}</div>',
+                    f"""
+                    <div class="salary">
+                        {html.escape(salary)}
+                    </div>
+                    """,
                     unsafe_allow_html=True
                 )
 
-        jt = html.escape(str(job_type or "Not specified"))
+        # ----------------------------------------------------
+        # Badges
+        # ----------------------------------------------------
+
+        jt = html.escape(job_type)
 
         st.markdown(
             f"""
-            <span class="badge badge-green">💼 {jt}</span>
-            <span class="badge">📌 Open Position</span>
+            <span class="badge badge-green">
+                💼 {jt}
+            </span>
+
+            <span class="badge">
+                📌 Open Position
+            </span>
             """,
             unsafe_allow_html=True
         )
 
-        if score is not None:
+        if smart_text:
+
             st.markdown(
-                f'<span class="badge badge-match">✨ {score}% Skill Match</span>',
+                f"""
+                <span class="badge badge-match">
+                    ✨ {score or 0}% Skill Match
+                </span>
+                """,
                 unsafe_allow_html=True
             )
 
-        # Important: description is plain Streamlit text, not raw HTML.
+        # ----------------------------------------------------
+        # DESCRIPTION
+        # ----------------------------------------------------
+
+        # IMPORTANT:
+        # escape() prevents API HTML from appearing as code.
+        # clean_description() removes the unwanted HTML first.
+
         st.markdown(
-            f'<div class="description">{html.escape(description)}</div>',
+            f"""
+            <div class="description">
+                {html.escape(description)}
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
+        # ----------------------------------------------------
+        # BUTTONS
+        # ----------------------------------------------------
+
         a, b = st.columns([1, 2.2])
 
+        # Save
         with a:
+
             if job_id in st.session_state.saved_jobs:
-                if st.button("♥ Saved", key=f"save_{job_id}", use_container_width=True):
+
+                if st.button(
+                    "♥ Saved",
+                    key=f"save_{job_id}",
+                    use_container_width=True
+                ):
+
                     st.session_state.saved_jobs.remove(job_id)
                     st.rerun()
+
             else:
-                if st.button("♡ Save", key=f"save_{job_id}", use_container_width=True):
+
+                if st.button(
+                    "♡ Save",
+                    key=f"save_{job_id}",
+                    use_container_width=True
+                ):
+
                     st.session_state.saved_jobs.add(job_id)
                     st.rerun()
 
+        # Open actual job
         with b:
-            if job_url:
+
+            if job_url and job_url.startswith(("http://", "https://")):
+
                 st.link_button(
                     "View Full Opportunity →",
-                    str(job_url),
+                    job_url,
                     use_container_width=True
                 )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+            else:
+
+                st.button(
+                    "Opportunity link unavailable",
+                    key=f"no_link_{job_id}",
+                    disabled=True,
+                    use_container_width=True
+                )
+
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
 
 
-# -------------------- Footer --------------------
+# ============================================================
+# FOOTER
+# ============================================================
 
 st.markdown("""
 <div class="footer">

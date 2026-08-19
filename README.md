@@ -1,35 +1,68 @@
 # 🔎 JobScout – Smart Job Discovery Platform
 
-JobScout is a simple job discovery web application built using **Python and Streamlit**.
+### Find opportunities that match your future.
 
-The application collects job opportunities from a public jobs API, stores the job data in a **SQLite database**, and displays the available jobs through a clean and user-friendly interface.
+JobScout is a job discovery web application that collects real job
+listings from the public Himalayas Jobs API, stores them in SQLite,
+and provides a clean Streamlit interface for searching, filtering,
+sorting, and opening job opportunities.
 
-## 🚀 Features
+## 🚀 Live Demo
 
-- Fetches job data from a public API
-- Stores job information in SQLite
-- Displays job title, company, job type, salary, and description
-- Search jobs by title or company
-- Provides direct links to job opportunities
-- Simple and responsive Streamlit interface
+👉 https://acydon-jobscout.streamlit.app/
 
-## 🛠️ Technologies Used
+## 💻 GitHub Repository
 
-- **Python**
-- **Streamlit** – Web application interface
-- **REST API** – Job data collection
-- **SQLite** – Local job database
-- **Requests** – API communication
+👉 https://github.com/anishamishra2207/acydon-jobscout
 
-## 🔄 How It Works
+---
+
+## ✨ Features
+
+- 🔎 Search jobs by title, company, or keyword
+- 🎯 Filter jobs by job type
+- 🏢 Filter jobs by company
+- ↕️ Sort job listings
+- ✨ Smart Match based on user skills
+- ♡ Save jobs during the current session
+- 🔗 Open the original job/application page
+- 🧹 Clean and readable job descriptions
+- 🗄️ SQLite-based local storage
+- 🔄 Duplicate-safe job ingestion
+- 📊 Displays the number of available and matching jobs
+- 🎨 Responsive, professional Streamlit UI
+
+---
+
+## 🏗️ Architecture
 
 ```text
-Public Jobs API
-      ↓
-Python API Fetcher
-      ↓
-SQLite Database
-      ↓
-Streamlit Application
-      ↓
-User searches and explores jobs
+                Himalayas Jobs API
+                        │
+                        ▼
+                fetch_jobs.py
+                        │
+                        ▼
+                  JSON Response
+                        │
+                        ▼
+                 Field Extraction
+                        │
+                        ▼
+                    SQLite
+                   jobs.db
+                        │
+                        ▼
+                   app.py
+                 Streamlit UI
+                        │
+            ┌───────────┼───────────┐
+            ▼           ▼           ▼
+         Search      Filters      Sorting
+            │           │           │
+            └───────────┼───────────┘
+                        ▼
+                 Job Opportunities
+                        │
+                        ▼
+              Original Application URL
